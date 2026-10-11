@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>就活面接チェックリスト（相互評価ツール）</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            .print-break { page-break-before: always; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <!-- ヘッダー -->
+    <header class="bg-indigo-700 text-white shadow-lg sticky top-0 z-50 no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-clipboard-check text-2xl text-amber-300"></i>
+                <h1 class="text-xl font-bold tracking-wide">就活面接チェックリスト (相互評価)</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="exportJSON()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-semibold flex items-center gap-1 transition">
+                    <i class="fa-solid fa-download"></i> 保存(JSON)
+                </button>
+                <label class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer transition">
+                    <i class="fa-solid fa-upload"></i> 読込
+                    <input type="file" id="importFile" onchange="importJSON(event)" class="hidden" accept=".json">
+                </label>
+                <button onclick="exportCSV()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-xs font-semibold flex items-center gap-1 transition">
+                    <i class="fa-solid fa-file-csv"></i> CSV出力
+                </button>
+                <button onclick="window.print()" class="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 rounded text-xs font-semibold flex items-center gap-1 transition">
+                    <i class="fa-solid fa-print"></i> 印刷
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- 左カラム: プロファイル設定 ＆ レーダーチャートサマリー -->
+        <div class="lg:col-span-5 space-y-6">
+            
+            <!-- 基本情報カード -->
+            <div class="bg-white p-5 rounded-xl shadow-md border border-slate-200">
+                <h2 class="text-base font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-user-gear text-indigo-600"></i> 面談情報
+                </h2>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">学生氏名</label>
+                        <input type="text" id="studentName" value="山田 太郎" oninput="saveState()" class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">担当CA名</label>
+                        <input type="text" id="caName" value="佐藤 アドバイザー" oninput="saveState()" class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">実施日</label>
+                    <input type="date" id="evalDate" class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none" oninput="saveState()">
+                </div>
+            </div>
+
+            <!-- チャート & スコア可視化 -->
+            <div class="bg-white p-5 rounded-xl shadow-md border border-slate-200 sticky top-20">
+                <h2 class="text-base font-bold text-slate-700 mb-3 flex items-center justify-between">
+                    <span><i class="fa-solid fa-chart-pie text-indigo-600"></i> 評価チャート比較</span>
+                    <span class="text-xs font-normal text-slate-500">※学生(青) vs CA(橙)</span>
+                </h2>
+                
+                <div class="relative w-full aspect-square max-w-[360px] mx-auto">
+                    <canvas id="radarChart"></canvas>
+                </div>
+
+                <!-- スコアサマリー -->
+                <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4 text-center">
+                    <div class="bg-blue-50 p-2.5 rounded-lg border border-blue-100">
+                        <div class="text-xs text-blue-600 font-medium">学生自己評価 平均</div>
+                        <div class="text-xl font-bold text-blue-800" id="avgStudentScore">0.0 / 5.0</div>
+                    </div>
+                    <div class="bg-amber-50 p-2.5 rounded-lg border border-amber-100">
+                        <div class="text-xs text-amber-600 font-medium">CA評価 平均</div>
+                        <div class="text-xl font-bold text-amber-800" id="avgCaScore">0.0 / 5.0</div>
+                    </div>
+                </div>
+
+                <!-- 大きなギャップ項目のアラート -->
+                <div id="gapAlertArea" class="mt-4"></div>
+            </div>
+
+        </div>
+
+        <!-- 右カラム: チェックリスト入力フォーム -->
+        <div class="lg:col-span-7 space-y-6">
+
+            <!-- 表示モードフィルター -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between no-print">
+                <span class="text-xs font-bold text-slate-600">入力表示モード:</span>
+                <div class="inline-flex rounded-md shadow-sm" role="group">
+                    <button type="button" onclick="setFilterMode('all')" id="btn-mode-all" class="px-3 py-1 text-xs font-medium bg-indigo-600 text-white rounded-l-lg hover:bg-indigo-700">全体比較</button>
+                    <button type="button" onclick="setFilterMode('student')" id="btn-mode-student" class="px-3 py-1 text-xs font-medium bg-white text-slate-700 border-t border-b border-slate-200 hover:bg-slate-50">学生視点</button>
+                    <button type="button" onclick="setFilterMode('ca')" id="btn-mode-ca" class="px-3 py-1 text-xs font-medium bg-white text-slate-700 border-t border-b border-r border-slate-200 rounded-r-lg hover:bg-slate-50">CA視点</button>
+                </div>
+            </div>
+
+            <!-- チェックリストカード群 -->
+            <div id="checklistContainer" class="space-y-4"></div>
+
+            <!-- 総括アドバイスエリア -->
+            <div class="bg-white p-5 rounded-xl shadow-md border border-slate-200">
+                <h3 class="text-base font-bold text-slate-700 mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-comment-dots text-indigo-600"></i> CAからの総括アドバイス・次回の目標
+                </h3>
+                <textarea id="overallFeedback" rows="4" placeholder="全体を通した強み、優先的に改善すべきポイント、次回の面接対策に向けたアクションアイテムを入力してください..." oninput="saveState()" class="w-full p-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // 就活チェックリスト（面接編）のマスタデータ
+        const checklistData = [
+            {
+                id: 1, name: "地頭・論理性",
+                levels: [
+                    { score: 1, def: "与えられたタスクや情報を誤って解釈したり、非論理的な判断を下したりすることが多く、業務の遂行に大きな支障をきたす。" },
+                    { score: 2, def: "新しい概念や複雑な指示の理解に時間がかかり、サポートが必要となることが多い。論理的な思考に一貫性を欠くことがある。" },
+                    { score: 3, def: "基本的な問題やタスクに対して、手順を踏んで正しく理解し、標準的な解決策を実行できる。業務遂行に必要な一般的な理解力を持つ。" },
+                    { score: 4, def: "未経験の課題でも、情報を整理し論理的に考え、実現性の高い解決策を比較的速く見つけ出せる。応用力が高い。" },
+                    { score: 5, def: "複雑な問題に対し、本質を見抜いた独自の解決策を迅速に導き出せる。深い洞察力と高い論理思考力を持つ。" }
+                ]
+            },
+            {
+                id: 2, name: "第一印象",
+                levels: [
+                    { score: 1, def: "不潔感や極端なTPO不適合、態度が悪いなど、ビジネスパーソンとして不適切な印象を与え、組織の一員としての懸念が生じる" },
+                    { score: 2, def: "服装の乱れや表情の乏しさ、自信のなさなどから、ややネガティブな印象を与える。改善が必要な点が見受けられる。" },
+                    { score: 3, def: "特に問題なく、一般的なビジネスマナーの範囲内で、無難な印象を与える。清潔感やTPOへの配慮は最低限満たしている。" },
+                    { score: 4, def: "明るくハキハキとしており、TPOに合った身だしなみで、良い印象を与える。安心して顧客や社内メンバーに紹介できるレベル。" },
+                    { score: 5, def: "非常に洗練され、自信に満ちた印象を与える。強いプロフェッショナリズムと清潔感があり、瞬時に高い信頼感を抱かせる。" }
+                ]
+            },
+            {
+                id: 3, name: "コミュ力",
+                levels: [
+                    { score: 1, def: "自分の考えを適切に表現できず、相手の言葉もほとんど理解できない。対話によって誤解や混乱を生じさせることが多い。" },
+                    { score: 2, def: "話が回りくどくなったり、要点が不明瞭になったりすることがある。相手の意図を取り違えることが散見され、確認が必要となる。" },
+                    { score: 3, def: "必要な情報を過不足なく伝達し、相手の言うことを概ね理解できる。基本的な報連相は問題なく行える。" },
+                    { score: 4, def: "自分の考えを論理的かつ簡潔に伝え、相手の質問や意図を正確に把握し、円滑で建設的な対話ができる。聞く力・話す力ともに優れている。" },
+                    { score: 5, def: "相手の状況や意図を深く洞察し、非言語的情報を含めて正確に理解できる。説得力と表現力が高く、周囲を動かすことができる。" }
+                ]
+            },
+            {
+                id: 4, name: "ストレス耐性・やりぬく力",
+                levels: [
+                    { score: 1, def: "日常的な業務の負荷にも耐えられず、感情的な反応を示したり、体調を崩したりして、業務の継続が困難になる。" },
+                    { score: 2, def: "少しのプレッシャーや失敗で動揺しやすく、パフォーマンスが一時的に低下する。周囲のサポートが必要となる場合がある。" },
+                    { score: 3, def: "一般的な業務上のプレッシャーには耐えられ、一時的な落ち込みがあっても、通常の業務遂行レベルは維持できる。" },
+                    { score: 4, def: "大きなストレスや困難があっても、感情に流されず、自ら対処法を見つけて速やかに回復し、業務を継続できる。" },
+                    { score: 5, def: "極度のプレッシャー下でも冷静さを保ち、むしろそれを糧に高いパフォーマンスを発揮できる。困難を乗り越える自信に満ちている。" }
+                ]
+            },
+            {
+                id: 5, name: "協調性",
+                levels: [
+                    { score: 1, def: "独断的な行動が多く、チームの目標やルールを無視する。他者との協力関係を築く意思が見られず、組織運営に大きな支障をきたす。" },
+                    { score: 2, def: "自分の意見ややり方に固執し、他者の提案を受け入れようとしないことがある。チーム内の連携を乱すことがある。" },
+                    { score: 3, def: "チームのルールや方針に従い、与えられた役割を遂行できる。他者との大きな衝突もなく、協力関係を保てる。" },
+                    { score: 4, def: "チームメンバーの多様な意見を尊重し、自身の役割を責任を持って果たしながら、積極的に他者を支援し、チーム目標達成に貢献できる。" },
+                    { score: 5, def: "チーム全体の調和を積極的に促し、対立を建設的に解消するなど、相乗効果を生み出すための中心的な役割を果たせる。" }
+                ]
+            },
+            {
+                id: 6, name: "リーダーシップ",
+                levels: [
+                    { score: 1, def: "指導や指示を出すことを避け、チームに対する責任感が欠如している。メンバーを混乱させたり、目標達成を妨げたりする。" },
+                    { score: 2, def: "自ら率先して行動することはあるが、メンバーの動機づけや計画的なチーム管理が苦手。フォロワーシップの方が強い。" },
+                    { score: 3, def: "上司やチームの指示に基づき、小規模なグループのタスクを管理・実行し、メンバーをサポートしながら目標達成に貢献できる。" },
+                    { score: 4, def: "チームの目標達成に向けた具体的な計画を立て、メンバーの能力を引き出し、適切な役割分担と指示でチームを効果的に牽引できる。" },
+                    { score: 5, def: "ビジョンを明確に提示し、多様なメンバーをまとめ、高い士気を維持しながら、困難な目標を達成に導くことができる。" }
+                ]
+            },
+            {
+                id: 7, name: "誠実さ",
+                levels: [
+                    { score: 1, def: "著しく倫理観を欠き、意図的にルールを破る、虚偽の申告をするなど、組織の信頼を損なう行動が認められる。" },
+                    { score: 2, def: "ルールや約束事を守れないことがある。都合の悪いことを隠したり、責任を他者に転嫁したりする傾向が散見される" },
+                    { score: 3, def: "基本的なルールや約束事は守る。責任感はあるが、プレッシャー下で一貫性を欠くことがある。一般的な社会人としての規範意識を持つ。" },
+                    { score: 4, def: "高い倫理観を持ち、ルールや約束事を確実に守る。責任感を持って業務に取り組むが、ごくまれに自己判断で対応を遅らせることがある。" },
+                    { score: 5, def: "常に倫理観と責任感を持ち、規範や約束事を率先して守り、高い信頼を得ている。自己の非を認め、隠さず報告できる。" }
+                ]
+            },
+            {
+                id: 8, name: "前向きさ",
+                levels: [
+                    { score: 1, def: "常に否定的な言動が多く、挑戦意欲が全く見られない。周囲の意欲を削ぐような発言や行動が多い。" },
+                    { score: 2, def: "新しい環境や変化を避ける傾向がある。課題や問題に対して消極的な姿勢が目立ち、モチベーションが低い。" },
+                    { score: 3, def: "与えられた仕事には前向きに取り組むが、受動的な姿勢も見られる。失敗や困難に直面すると、立ち直りにやや時間がかかることがある。" },
+                    { score: 4, def: "新しいことや困難なことにも意欲的に取り組み、ポジティブな姿勢で粘り強く行動できる。多少の失敗では気持ちを切り替えられる。" },
+                    { score: 5, def: "困難な状況でも明るく意欲的で、常に新しい可能性を探る。周囲を巻き込み、率先して課題解決に取り組むエネルギーがある。" }
+                ]
+            },
+            {
+                id: 9, name: "成長意欲",
+                levels: [
+                    { score: 1, def: "自身の成長に関心がなく、新しいことを学ぶことを拒否する。変化を嫌い、ルーティンワークのみを望む。" },
+                    { score: 2, def: "現状に満足しており、新たな学習や努力を避ける傾向がある。フィードバックを成長の機会として捉えられていない。" },
+                    { score: 3, def: "業務に必要な知識・スキル習得には努める。成長の必要性は認識しているが、具体的な行動はやや受動的で、指示待ちの傾向がある。" },
+                    { score: 4, def: "向上心があり、知識やスキルを積極的に習得しようと努力する。フィードバックを真摯に受け止め、改善に活かそうとする。" },
+                    { score: 5, def: "自己の課題を的確に把握し、高い目標を設定して計画的に自己投資を行う。常識にとらわれず、自ら学習環境を作り出す。" }
+                ]
+            },
+            {
+                id: 10, name: "ITへの興味関心",
+                levels: [
+                    { score: 1, def: "ITに対する関心が全くなく、技術の変化にも無関心である。ITの導入や活用をネガティブに捉えている。" },
+                    { score: 2, def: "ITの必要性は認識しているものの、学習意欲は低く、苦手意識を持っている。IT知識・スキルに対する関心が薄い。" },
+                    { score: 3, def: "ITの基本的な役割は理解しており、業務で必要であれば学習する意欲はある。ただし、自主的な情報収集や深い知識はまだない。" },
+                    { score: 4, def: "ITが社会やビジネスにもたらす影響を理解しており、積極的に情報収集している。ITスキル習得に前向きで、関連分野の学習経験がある。" },
+                    { score: 5, def: "IT技術全般に対する探求心が旺盛で、業界の動向や最新技術を自発的に調査・学習している。ITで新しい価値を創出したいという意欲が高い。" }
+                ]
+            }
+        ];
+
+        // 状態保持
+        let state = {
+            studentName: "山田 太郎",
+            caName: "佐藤 アドバイザー",
+            evalDate: new Date().toISOString().split('T')[0],
+            studentScores: {}, // { item_id: score }
+            caScores: {},      // { item_id: score }
+            notes: {},         // { item_id: text }
+            overallFeedback: "",
+            filterMode: "all"  // 'all', 'student', 'ca'
+        };
+
+        let radarChart = null;
+
+        // 初期化
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('evalDate').value = state.evalDate;
+            loadLocalStorage();
+            renderChecklist();
+            initChart();
+            updateChart();
+        });
+
+        // チェックリスト描画
+        function renderChecklist() {
+            const container = document.getElementById('checklistContainer');
+            container.innerHTML = '';
+
+            checklistData.forEach(item => {
+                const studentVal = state.studentScores[item.id] || 0;
+                const caVal = state.caScores[item.id] || 0;
+                const noteVal = state.notes[item.id] || '';
+                const gap = (studentVal && caVal) ? Math.abs(studentVal - caVal) : 0;
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-5 rounded-xl shadow-md border border-slate-200 space-y-4";
+
+                let levelsHtml = item.levels.map(lvl => {
+                    const isStudentSel = studentVal === lvl.score;
+                    const isCaSel = caVal === lvl.score;
+
+                    return `
+                        <div class="p-2.5 rounded-lg border text-xs transition ${ (isStudentSel || isCaSel) ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-100 bg-slate-50' }">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="font-bold text-slate-700">点数 ${lvl.score}</span>
+                                <div class="flex gap-2">
+                                    ${ isStudentSel ? '<span class="px-1.5 py-0.5 bg-blue-600 text-white text-[10px] rounded font-medium">学生選択</span>' : '' }
+                                    ${ isCaSel ? '<span class="px-1.5 py-0.5 bg-amber-500 text-white text-[10px] rounded font-medium">CA選択</span>' : '' }
+                                </div>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed">${lvl.def}</p>
+                        </div>
+                    `;
+                }).join('');
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-xs">${item.id}</span>
+                            <h3 class="font-bold text-slate-800 text-base">${item.name}</h3>
+                        </div>
+                        ${ gap >= 2 ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-700 text-xs font-bold rounded-full flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation"></i> ギャップ大 (${gap}pt差)</span>` : '' }
+                    </div>
+
+                    <!-- 評価選択エリア -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <!-- 学生評価選択 -->
+                        <div class="space-y-1 ${ state.filterMode === 'ca' ? 'hidden' : '' }">
+                            <label class="block text-xs font-bold text-blue-700 flex items-center gap-1">
+                                <i class="fa-solid fa-user"></i> 学生の自己評価 (1-5)
+                            </label>
+                            <div class="flex gap-1">
+                                ${ [1,2,3,4,5].map(s => `
+                                    <button type="button" onclick="setScore(${item.id}, 'student',${s})"
+                                        class="flex-1 py-1.5 text-xs font-bold rounded border ${ studentVal === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-blue-50' }">
+                                        ${s}
+                                    </button>
+                                `).join('') }
+                            </div>
+                        </div>
+
+                        <!-- CA評価選択 -->
+                        <div class="space-y-1 ${ state.filterMode === 'student' ? 'hidden' : '' }">
+                            <label class="block text-xs font-bold text-amber-700 flex items-center gap-1">
+                                <i class="fa-solid fa-user-tie"></i> CAの評価 (1-5)
+                            </label>
+                            <div class="flex gap-1">
+                                ${ [1,2,3,4,5].map(s => `
+                                    <button type="button" onclick="setScore(${item.id}, 'ca',${s})"
+                                        class="flex-1 py-1.5 text-xs font-bold rounded border ${ caVal === s ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-300 hover:bg-amber-50' }">
+                                        ${s}
+                                    </button>
+                                `).join('') }
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 点数定義のアコーディオン/リスト -->
+                    <div class="space-y-2 mt-2">
+                        <div class="text-xs font-semibold text-slate-500 mb-1">点数定義ガイド</div>
+                        <div class="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                            ${levelsHtml}
+                        </div>
+                    </div>
+
+                    <!-- 項目別個別コメント -->
+                    <div>
+                        <input type="text" placeholder="項目メモ・理由（例: 根拠となるエピソード、具体的な改善策など）" 
+                            value="${noteVal}" 
+                            oninput="setNote(${item.id}, this.value)"
+                            class="w-full px-3 py-1.5 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // スコア変更
+        function setScore(itemId, role, score) {
+            if (role === 'student') {
+                state.studentScores[itemId] = score;
+            } else {
+                state.caScores[itemId] = score;
+            }
+            saveState();
+            renderChecklist();
+            updateChart();
+        }
+
+        // メモ変更
+        function setNote(itemId, text) {
+            state.notes[itemId] = text;
+            saveState();
+        }
+
+        // 表示モード切り替え
+        function setFilterMode(mode) {
+            state.filterMode = mode;
+            ['all', 'student', 'ca'].forEach(m => {
+                const btn = document.getElementById(`btn-mode-${m}`);
+                if (m === mode) {
+                    btn.className = "px-3 py-1 text-xs font-medium bg-indigo-600 text-white border border-indigo-600";
+                } else {
+                    btn.className = "px-3 py-1 text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50";
+                }
+            });
+            renderChecklist();
+        }
+
+        // チャート初期化
+        function initChart() {
+            const ctx = document.getElementById('radarChart').getContext('2d');
+            const labels = checklistData.map(d => d.name);
+
+            radarChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '学生自己評価',
+                            data: labels.map(() => 0),
+                            backgroundColor: 'rgba(37, 99, 235, 0.2)',
+                            borderColor: 'rgba(37, 99, 235, 0.9)',
+                            borderWidth: 2,
+                            pointBackgroundColor: 'rgba(37, 99, 235, 1)'
+                        },
+                        {
+                            label: 'CA評価',
+                            data: labels.map(() => 0),
+                            backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                            borderColor: 'rgba(245, 158, 11, 0.9)',
+                            borderWidth: 2,
+                            pointBackgroundColor: 'rgba(245, 158, 11, 1)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        r: {
+                            min: 0,
+                            max: 5,
+                            ticks: { stepSize: 1 },
+                            pointLabels: { font: { size: 10, weight: 'bold' } }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12 } }
+                    }
+                }
+            });
+        }
+
+        // チャート更新 & 平均計算 & アラート検出
+        function updateChart() {
+            const studentVals = checklistData.map(d => state.studentScores[d.id] || 0);
+            const caVals = checklistData.map(d => state.caScores[d.id] || 0);
+
+            radarChart.data.datasets[0].data = studentVals;
+            radarChart.data.datasets[1].data = caVals;
+            radarChart.update();
+
+            // 平均点計算
+            const validStudent = studentVals.filter(v => v > 0);
+            const validCa = caVals.filter(v => v > 0);
+
+            const avgStudent = validStudent.length ? (validStudent.reduce((a,b)=>a+b, 0) / validStudent.length).toFixed(1) : "0.0";
+            const avgCa = validCa.length ? (validCa.reduce((a,b)=>a+b, 0) / validCa.length).toFixed(1) : "0.0";
+
+            document.getElementById('avgStudentScore').innerText = `${avgStudent} / 5.0`;
+            document.getElementById('avgCaScore').innerText = `${avgCa} / 5.0`;
+
+            // ギャップ分析（2点以上ズレがある項目）
+            const gapAlertArea = document.getElementById('gapAlertArea');
+            const gaps = [];
+
+            checklistData.forEach(item => {
+                const s = state.studentScores[item.id];
+                const c = state.caScores[item.id];
+                if (s && c && Math.abs(s - c) >= 2) {
+                    gaps.push({ name: item.name, diff: s - c });
+                }
+            });
+
+            if (gaps.length > 0) {
+                gapAlertArea.innerHTML = `
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
+                        <div class="font-bold text-amber-800 mb-1 flex items-center gap-1">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> 認識の乖離が大きい項目 (${gaps.length}件)
+                        </div>
+                        <ul class="list-disc list-inside text-amber-700 space-y-0.5">
+                            ${ gaps.map(g => `<li><strong>${g.name}</strong>:${ g.diff > 0 ? '自負が高め (+'+g.diff+')' : '自己評価が低い ('+g.diff+')' }</li>`).join('') }
+                        </ul>
+                    </div>
+                `;
+            } else {
+                gapAlertArea.innerHTML = '';
+            }
+        }
+
+        // LocalStorage 保存＆読込
+        function saveState() {
+            state.studentName = document.getElementById('studentName').value;
+            state.caName = document.getElementById('caName').value;
+            state.evalDate = document.getElementById('evalDate').value;
+            state.overallFeedback = document.getElementById('overallFeedback').value;
+
+            localStorage.setItem('career_checklist_state', JSON.stringify(state));
+        }
+
+        function loadLocalStorage() {
+            const saved = localStorage.getItem('career_checklist_state');
+            if (saved) {
+                try {
+                    state = { ...state, ...JSON.parse(saved) };
+                    document.getElementById('studentName').value = state.studentName || '';
+                    document.getElementById('caName').value = state.caName || '';
+                    document.getElementById('evalDate').value = state.evalDate || '';
+                    document.getElementById('overallFeedback').value = state.overallFeedback || '';
+                } catch(e) { console.error(e); }
+            }
+        }
+
+        // エクスポート/インポート
+        function exportJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `就活チェックリスト_${state.studentName}_${state.evalDate}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    state = JSON.parse(e.target.result);
+                    document.getElementById('studentName').value = state.studentName || '';
+                    document.getElementById('caName').value = state.caName || '';
+                    document.getElementById('evalDate').value = state.evalDate || '';
+                    document.getElementById('overallFeedback').value = state.overallFeedback || '';
+                    saveState();
+                    renderChecklist();
+                    updateChart();
+                    alert('データを読み込みました');
+                } catch(err) {
+                    alert('ファイルの読み込みに失敗しました');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function exportCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // UTF-8 BOM付き
+            csvContent += "項目ID,項目名,学生評価,CA評価,差分,評価メモ\n";
+
+            checklistData.forEach(item => {
+                const s = state.studentScores[item.id] || '';
+                const c = state.caScores[item.id] || '';
+                const diff = (s !== '' && c !== '') ? (s - c) : '';
+                const note = (state.notes[item.id] || '').replace(/"/g, '""');
+
+                csvContent += `"${item.id}","${item.name}","${s}","${c}","${diff}","${note}"\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `就活チェックリスト_${state.studentName}_${state.evalDate}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        }
+    </script>
+</body>
+</html>
